@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 
 
-class WeightOfEvidence:
+class woe_tree:
     def __init__(self, max_depth=None, min_samples_leaf=None,
                  criterion='gini', splitter='best',
                  min_samples_split=2, min_weight_fraction_leaf=0.0,
@@ -70,7 +70,7 @@ class WeightOfEvidence:
             unique_nodes = np.unique(nodes, return_counts=True)
             feature_woe_dict = {}
             for ind, node_num in enumerate(unique_nodes[0]):
-                n_pos = sum(y[nodes == unique_nodes[0][ind]])
+                n_pos = sum(y[nodes == node_num])
                 woe = np.log(n_pos / (unique_nodes[1][ind] - n_pos))
                 feature_woe_dict[node_num] = woe
             self._woe_dict[feat_ind] = feature_woe_dict
