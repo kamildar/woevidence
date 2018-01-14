@@ -23,7 +23,8 @@ class woe_forest:
                  random_state=None,
                  verbose=0,
                  warm_start=False,
-                 class_weight=None):
+                 class_weight=None,
+                 dtype='float32'):
         self._n_estimators = n_estimators
         self._criterion = criterion
         self._max_depth = max_depth
@@ -42,8 +43,10 @@ class woe_forest:
         self._warm_start = warm_start
         self._class_weight = class_weight
 
+        self._dtype = dtype
         self._woe_dict = None
         self._forest_apply = None
+        self._n_feat = None
         pass
 
     def fit(self, X, y):
@@ -56,6 +59,17 @@ class woe_forest:
         y:  array-like, len [n_samples]
             target variable
         """
+        X = np.array(X, dtype=self._dtype)
+        y = np.array(y, dtype=self._dtype).ravel()
+
+        try:
+            self._n_feat = X.shape[1]
+        except IndexError:
+            self._n_feat = 1
+
+        if self._n_feat == 1:
+            X = X.reshape(-1, 1)
+
         rf = RandomForestClassifier(
             n_estimators=self._n_estimators,
             criterion=self._criterion,
@@ -84,7 +98,7 @@ class woe_forest:
             unique_nodes = np.unique(nodes[:, tree_ind],
                                      return_counts=True)
             for node_ind, node_num in enumerate(unique_nodes[0]):
-                n_pos = sum(y[nodes[:, node_ind] == node_num])
+                n_pos = np.sum(y[nodes[:, tree_ind] == node_num])
                 woe = np.log(
                     n_pos / (unique_nodes[1][node_ind] - n_pos))
                 tree_woe_dict[node_num] = woe
@@ -96,7 +110,13 @@ class woe_forest:
         X:  array-like, shape [n_samples, n_features]
             Input data that will be transformed.
         """
-        woe_X = np.float32(self._forest_apply(X))
+        X = np.array(X, dtype=self._dtype)
+        if self._n_feat == 1:
+            X = X.reshape(-1, 1)
+
+        woe_X = np.array(
+            self._forest_apply(X),
+            dtype=self._dtype)
 
         for tree_ind in range(self._n_estimators):
             woe_X[:, tree_ind] = np.vectorize(
