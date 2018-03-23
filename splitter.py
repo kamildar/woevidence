@@ -2,7 +2,6 @@
 # MIT License
 
 import numpy as np
-# from collections import Counter
 
 
 def gini(y):
@@ -12,7 +11,7 @@ def gini(y):
 
 def entropy(y):
     prob = np.sum(y) / len(y)
-    return - prob * np.log(prob)
+    return (- prob * np.log(prob))
 
 
 def split(x, y, criterion,
@@ -32,10 +31,12 @@ def split(x, y, criterion,
     # x = x[sort_inds]
     y = y[sort_inds]
 
-    x_info = np.unique(x, return_count=True)
+    x_info = np.unique(x, return_counts=True)
 
     impurities = np.zeros_like(x)
-    for ind, n_left in enumerate(np.cumsum(x_info[1])):
+    for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
         impurities[ind] = (
             (splitter(y[:n_left]) * n_left +
-             splitter(y[:n_left]) * (n_obs - n_left)) / n_obs)
+             splitter(y[n_left:]) * (n_obs - n_left)) / n_obs)
+    threshold = np.argmin(impurities)
+    return threshold
