@@ -5,6 +5,7 @@ from sklearn.tree import DecisionTreeClassifier
 
 
 class woe_tree:
+
     def __init__(self,
                  max_depth=None,
                  min_samples_leaf=None,
