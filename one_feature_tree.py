@@ -1,26 +1,17 @@
 # Author: Kamaldinov Ildar (kamildraf@gmail.com)
 # MIT License
 import numpy as np
-
-
-def gini(y):
-    prob = np.sum(y) / len(y)
-    return prob * (1 - prob)
-
-
-def entropy(y):
-    prob = np.sum(y) / len(y)
-    return (- prob * np.log(prob))
+from criterions import gini, entropy
 
 
 class OneFeatureTree(object):
 
     def __init__(self,
                  criterion,
-                 max_depth=None,
                  min_samples_leaf=2,
-                 min_samples_class=1,
                  smooth_woe=0.001,
+                 min_samples_class=1,
+                 max_depth=None,
                  dtype=np.float32):
         self._criterion = criterion
         self._max_depth = max_depth
@@ -51,18 +42,13 @@ class OneFeatureTree(object):
         else:
             assert callable(self._criterion)
 
-        x = np.array(x)
-        y = np.array(y)
-
         n_obs = len(y)
-        sort_inds = np.argsort(x)
-        y = y[sort_inds]
+        y = y[np.argsort(x)]
 
         x_info = np.unique(x, return_counts=True)
 
         impurities = np.zeros(len(x_info[0]) - 1)
         for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
-
             impurities[ind] = (
                 (splitter(y[:n_left]) * n_left +
                  splitter(y[n_left:]) * (n_obs - n_left)) / n_obs)
@@ -79,7 +65,8 @@ class OneFeatureTree(object):
         n_pos = np.sum(y)
         n_neg = len(y) - n_pos
         min_class = np.all(np.array([n_pos, n_neg]) >= self._min_samples_class)
-        max_depth = (depth < self._max_depth)
+        max_depth = ((depth < self._max_depth)
+                     if self._max_depth is not None else True)
 
         if (min_samples and min_class and max_depth and uniq_x):
             # zero node type for non-terminal nodes
@@ -102,10 +89,14 @@ class OneFeatureTree(object):
         else:
             node['type'] = 1
             node['woe'] = self._calc_woe(y, self._smooth_woe)
+        return self
 
     def fit(self, x, y):
-        self._fit_node(x, y,
-                       depth=0, node=self._tree)
+        x = np.array(x, dtype=self._dtype)
+        y = np.array(y, dtype=self._dtype)
+
+        self._fit_node(x, y, depth=0, node=self._tree)
+        return self
 
     def _transform_node(self, x, node):
         if node['type'] == 0:
