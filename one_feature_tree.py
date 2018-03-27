@@ -12,6 +12,7 @@ class OneFeatureTree(object):
                  smooth_woe=0.001,
                  min_samples_class=1,
                  max_depth=None,
+                 smooth_entropy=0.001,
                  dtype=np.float32):
         self._criterion = criterion
         self._max_depth = max_depth
@@ -19,6 +20,7 @@ class OneFeatureTree(object):
         self._min_samples_class = min_samples_class
         self._smooth_woe = smooth_woe
         self._dtype = dtype
+        self._smooth_entropy = smooth_entropy
 
         self._tree = {}
 
@@ -50,8 +52,10 @@ class OneFeatureTree(object):
         impurities = np.zeros(len(x_info[0]) - 1)
         for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
             impurities[ind] = (
-                (splitter(y[:n_left]) * n_left +
-                 splitter(y[n_left:]) * (n_obs - n_left)) / n_obs)
+                (splitter(y[:n_left],
+                          self._smooth_entropy) * n_left +
+                 splitter(y[n_left:],
+                          self._smooth_entropy) * (n_obs - n_left)) / n_obs)
         thresh_ind = np.argmin(impurities)
         threshold = np.mean(
             x_info[0][[thresh_ind, thresh_ind + 1]])
