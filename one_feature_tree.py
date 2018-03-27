@@ -1,6 +1,5 @@
 # Author: Kamaldinov Ildar (kamildraf@gmail.com)
 # MIT License
-
 import numpy as np
 
 
@@ -14,44 +13,21 @@ def entropy(y):
     return (- prob * np.log(prob))
 
 
-def split(x, y, criterion):
-    if criterion == 'gini':
-        splitter = gini
-    elif criterion == 'entropy':
-        splitter = entropy
-    else:
-        assert callable(criterion)
-
-    x = np.array(x)
-    y = np.array(y)
-
-    n_obs = len(y)
-    sort_inds = np.argsort(x)
-    # x = x[sort_inds]
-    y = y[sort_inds]
-
-    x_info = np.unique(x, return_counts=True)
-
-    impurities = np.zeros_like(x)
-    for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
-        impurities[ind] = (
-            (splitter(y[:n_left]) * n_left +
-             splitter(y[n_left:]) * (n_obs - n_left)) / n_obs)
-    threshold = np.argmin(impurities[:ind])
-    return threshold
-
-
 class OneFeatureTree(object):
 
     def __init__(self,
                  criterion,
                  max_depth=None,
                  min_samples_leaf=2,
-                 min_samples_class=1):
+                 min_samples_class=1,
+                 smooth_woe=0.001,
+                 dtype=np.float32):
         self._criterion = criterion
         self._max_depth = max_depth
         self._min_samples_leaf = min_samples_leaf
         self._min_samples_class = min_samples_class
+        self._smooth_woe = smooth_woe
+        self._dtype = dtype
 
         self._tree = {}
 
@@ -61,10 +37,10 @@ class OneFeatureTree(object):
         left_y, right_y = y[left_ind], y[np.logical_not(left_ind)]
         return left_x, right_x, left_y, right_y
 
-    def _calc_woe(self, y):
+    def _calc_woe(self, y, smooth_woe):
         n_pos = np.sum(y)
         n_neg = np.float32(len(y)) - n_pos
-        woe = np.log(n_pos / n_neg)
+        woe = np.log((n_pos + smooth_woe) / (n_neg + smooth_woe))
         return woe
 
     def _split(self, x, y):
@@ -84,12 +60,15 @@ class OneFeatureTree(object):
 
         x_info = np.unique(x, return_counts=True)
 
-        impurities = np.zeros(len(x) - 2)
+        impurities = np.zeros(len(x_info[0]) - 1)
         for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
+
             impurities[ind] = (
                 (splitter(y[:n_left]) * n_left +
                  splitter(y[n_left:]) * (n_obs - n_left)) / n_obs)
-        threshold = np.argmin(impurities)
+        thresh_ind = np.argmin(impurities)
+        threshold = np.mean(
+            x_info[0][[thresh_ind, thresh_ind + 1]])
         return threshold
 
     def _fit_node(self, x, y,
@@ -97,15 +76,12 @@ class OneFeatureTree(object):
 
         min_samples = (len(y) > self._min_samples_leaf)
         uniq_x = len(np.unique(x)) > 1
-        min_class = np.all(
-            np.unique(y, return_counts=True)[1] >
-            self._min_samples_class)
+        n_pos = np.sum(y)
+        n_neg = len(y) - n_pos
+        min_class = np.all(np.array([n_pos, n_neg]) >= self._min_samples_class)
         max_depth = (depth < self._max_depth)
 
         if (min_samples and min_class and max_depth and uniq_x):
-            print(len(y))
-
-
             # zero node type for non-terminal nodes
             node['type'] = 0
 
@@ -125,22 +101,28 @@ class OneFeatureTree(object):
                            node[1])
         else:
             node['type'] = 1
-            node['woe'] = self._calc_woe(y)
+            node['woe'] = self._calc_woe(y, self._smooth_woe)
 
     def fit(self, x, y):
         self._fit_node(x, y,
                        depth=0, node=self._tree)
 
-    def _predict_node(self, x, node):
+    def _transform_node(self, x, node):
         if node['type'] == 0:
             if x < node['thresh']:
-                return self._predict_node(x, node[0])
+                return self._transform_node(x, node[0])
             else:
-                return self._predict_node(x, node[1])
+                return self._transform_node(x, node[1])
         return node['woe']
 
-    def predict(self, x):
-        predicted = np.zeros_like(x)
+    def transform(self, x):
+        if len(self._tree) == 0:
+            return "Not trained yet"
+        transformed = np.zeros_like(x, dtype=self._dtype)
         for ind in range(len(x)):
-            predicted[ind] = self._predict_node(x[ind], self._tree)
-        return predicted
+            transformed[ind] = self._transform_node(x[ind], self._tree)
+        return transformed
+
+    def fit_transform(self, x, y):
+        self.fit(x, y)
+        return self.transform(x)
