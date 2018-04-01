@@ -53,9 +53,10 @@ class OneFeatureTree(object):
         for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
             impurities[ind] = (
                 (splitter(y[:n_left],
-                          self._smooth_entropy) * n_left +
+                          smooth=self._smooth_entropy) * n_left +
                  splitter(y[n_left:],
-                          self._smooth_entropy) * (n_obs - n_left)) / n_obs)
+                          smooth=self._smooth_entropy) * (n_obs - n_left)) \
+                / n_obs)
         thresh_ind = np.argmin(impurities)
         threshold = np.mean(
             x_info[0][[thresh_ind, thresh_ind + 1]])
