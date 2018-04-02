@@ -28,7 +28,7 @@ class OneFeatureNN(object):
         except IndexError:
             x = x[:, np.newaxis]
         self._tree = cKDTree(x, balanced_tree=False)
-        
+
         if copy_target:
             self._target = y
         return self
@@ -56,4 +56,4 @@ class OneFeatureNN(object):
 
     def fit_transform(self, x, y, k=None, n_jobs=None):
         self.fit(x, y)
-        return transform(x, y, k=k, n_jobs=n_jobs)
+        return self.transform(x, y, k=k, n_jobs=n_jobs)
