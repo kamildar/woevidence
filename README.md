@@ -1,7 +1,18 @@
-# woe_transform
-Weight of evidence transformation
+# Weight of evidence transformation
 
-Functions apply tree or random forest classifier to dataset for getting terminal leafs and after that apply WoE transformation.
-Current problems:
-- no specific way for handling missing values
-- returns inf for leafs with only 1 or 0 values, tune tree or random forest parameters to avoid this
+## How to
+clone this repository into your working directory
+```
+git clone https://github.com/kamildar/woe_transform.git
+```
+after that use classes ```WoeTree``` or ```WoeNN```.
+
+Example:
+```python
+woe = WoeTree(criterion='entropy', max_depth=4, n_jobs=-1)
+woe_data = WoeTree.fit_transform(features, target)
+````
+and use ```woe_data``` as features for task.
+
+## More information
+Additional information on encoders will be provided as soon as possible.
