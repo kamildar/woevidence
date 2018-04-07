@@ -4,7 +4,7 @@
 Example:
 ```python
 woe = WoeTree(criterion='entropy', max_depth=4, n_jobs=-1)
-woe_data = WoeTree.fit_transform(features, target)
+woe_data = woe.fit_transform(features, target)
 ````
 and use ```woe_data``` as features for task.
 
