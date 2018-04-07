@@ -10,18 +10,66 @@ class WoeTree(object):
     def __init__(self,
                  criterion,
                  min_samples_leaf=2,
-                 min_samples_class=1,
+                 min_samples_class=0,
                  max_depth=None,
                  na_strategy='own',
                  smooth_woe=0.001,
+                 smooth_entropy=0.001,
                  n_jobs=1,
                  dtype=None):
+        """Weight Of Evidence encoder
+
+        This estimator build trees for features based
+        on criterion and apply WOE transformation
+        to terminal lists defined as
+
+        WOE = log(number of positive obs. / n. of negative)
+
+        Parameters
+        ----------
+        criterion : str, default='entropy'
+            Criterion for building a tree,
+            supported: 'gini' and 'entropy'.
+
+        min_samples_leaf : int, default=2
+            Minimum number of observation in
+            leaf for splitting.
+
+        min_samples_class : int, default=0,
+            Minimum number of observation per class
+            for calculating woe.
+
+        max_depth : int or None, default=None
+            Maximum depth of three, None means
+            unbouded tree.
+
+        na_strategy : str, float, default='own'
+            Determine value for missing values.
+            if float set na_strategy value to
+            woe of NA, 'own' calculate woe for missing
+            values or set to zero if there is no missings,
+            'min', 'max' stratigies set min and max
+            woe value respectively.
+
+        smooth_woe : float, default=0.001
+            Constant for avoiding division on zero
+            and log(0) in homoscedasticity leaf.
+
+        smooth_entropy : float, defalut=0.001
+            Constant for avoiding log(0).
+
+        n_jobs : int, default=1
+            number of threads for fit and
+            transform methods
+
+        """
         self._criterion = criterion
         self._min_samples_leaf = min_samples_leaf
         self._min_samples_class = min_samples_class
         self._max_depth = max_depth
         self._na_strategy = na_strategy
         self._smooth_woe = smooth_woe
+        self._smooth_entropy = smooth_entropy
         self._n_jobs = n_jobs
         self._dtype = np.float32 if dtype is None else dtype
 
@@ -54,6 +102,7 @@ class WoeTree(object):
             self._min_samples_class, n_features)
         na_strategy = self._to_arglist(self._na_strategy, n_features)
         smooth_woe = self._to_arglist(self._smooth_woe, n_features)
+        smooth_entropy = self._to_arglist(self._smooth_entropy, n_features)
 
         for feature in range(n_features):
             self._trees.append(
@@ -64,6 +113,7 @@ class WoeTree(object):
                     min_samples_class=min_samples_class[feature],
                     na_strategy=na_strategy[feature],
                     smooth_woe=smooth_woe[feature],
+                    smooth_entropy=smooth_entropy[feature],
                     dtype=self._dtype
                 )
             )
@@ -83,4 +133,4 @@ class WoeTree(object):
 
     def fit_transfrom(self, X, y):
         self.fit(X, y)
-        return self.transform(X, y)
+        return self.transform(X)
