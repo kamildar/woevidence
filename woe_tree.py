@@ -14,7 +14,8 @@ class WoeTree(object):
                  max_depth=None,
                  na_strategy='own',
                  smooth_woe=0.001,
-                 smooth_entropy=0.001,
+                 smooth_entropy=1,
+                 max_bins=255,
                  n_jobs=1,
                  dtype=None):
         """Weight Of Evidence encoder
@@ -43,6 +44,10 @@ class WoeTree(object):
             Maximum depth of three, None means
             unbouded tree.
 
+        max_bins : int, default=255
+            Number of bins for continious variable.self
+            Smaller value speep up computations.
+
         na_strategy : str, float, default='own'
             Determine value for missing values.
             if float set na_strategy value to
@@ -68,6 +73,7 @@ class WoeTree(object):
         self._min_samples_class = min_samples_class
         self._max_depth = max_depth
         self._na_strategy = na_strategy
+        self._max_bins = max_bins
         self._smooth_woe = smooth_woe
         self._smooth_entropy = smooth_entropy
         self._n_jobs = n_jobs

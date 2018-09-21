@@ -12,8 +12,9 @@ class OneFeatureTree(object):
                  smooth_woe=0.001,
                  min_samples_class=0,
                  max_depth=None,
-                 smooth_entropy=0.001,
+                 smooth_entropy=1,
                  na_strategy='own',
+                 max_bins=255,
                  dtype=None):
         """Weight Of Evidence transformation encoder
 
@@ -54,6 +55,10 @@ class OneFeatureTree(object):
             values or set to zero if there is no missings,
             'min', 'max' stratigies set min and max
             woe value respectively
+
+        max_bins : int, default=255
+            Number of bins for continious variable.self
+            Smaller value speep up computations.
         """
         self._criterion = criterion
         self._max_depth = max_depth
@@ -61,8 +66,11 @@ class OneFeatureTree(object):
         self._min_samples_class = min_samples_class
         self._smooth_woe = smooth_woe
         self._smooth_entropy = smooth_entropy
+        self._max_bins = max_bins
         self._na_strategy = na_strategy
         self._dtype = np.float32 if dtype is None else dtype
+
+        self._breakpoints = None
 
     def _split_vector(self, x, y, value):
         """split vector based on value"""
@@ -78,7 +86,20 @@ class OneFeatureTree(object):
         woe = np.log((n_pos + smooth_woe) / (n_neg + smooth_woe))
         return woe
 
-    def _split(self, x, y):
+    def _set_bins(self, x):
+        """calculation breakpoints for splitting"""
+        fd_binst = np.histogram(x, bins='fd')[1]
+        scott = np.histogram(x, bins='scott')[1]
+        doane = np.histogram(x, bins='doane')[1]
+        bins = np.histogram(x, bins=self._max_bins)[1]
+
+        self._breakpoints = np.unique(
+            np.percentile(
+                np.concatenate([fd_binst, scott, doane, bins]),
+                np.linspace(0, 100, self._max_bins + 2)))[1:-1]
+        return self
+
+    def _split(self, x, y, **kwargs):
         """threshold for splitting calculation"""
         if self._criterion == 'gini':
             splitter = gini
@@ -88,30 +109,29 @@ class OneFeatureTree(object):
             assert callable(self._criterion)
 
         n_obs = len(y)
-        y = y[np.argsort(x)]
-
-        x_info = np.unique(x, return_counts=True)
 
         # impurites vector
-        impurities = np.zeros(len(x_info[0]) - 1)
+        impurities = np.zeros(len(self._breakpoints))
 
         # exclude last element
-        for ind, n_left in enumerate(np.cumsum(x_info[1])[:-1]):
+        mask = np.ones_like(x, dtype=bool)
+        for ind, brkpoint in enumerate(self._breakpoints):
+            mask[mask] = (x[mask] > brkpoint)
+            n_left = mask.sum()
+
             impurities[ind] = (
-                (splitter(y[:n_left],
-                          smooth=self._smooth_entropy) * n_left +
-                 splitter(y[n_left:],
-                          smooth=self._smooth_entropy) * (n_obs - n_left)
-                 ) / n_obs)
+                splitter(y[np.logical_not(mask)], **kwargs) * (n_obs - n_left) +
+                splitter(y[mask], **kwargs) * n_left)
         thresh_ind = np.argmin(impurities)
 
         # threshold is middle of two points
-        threshold = np.mean(
-            x_info[0][[thresh_ind, thresh_ind + 1]])
+        threshold = self._breakpoints[thresh_ind]
         return threshold
 
     def _fit_node(self, x, y, depth, node):
         """set node to terminal or non-terminal"""
+        if self._breakpoints is None:
+            self._set_bins(x)
 
         # values for determine end of recursion
         min_samples = (len(y) > self._min_samples_leaf)
@@ -127,7 +147,7 @@ class OneFeatureTree(object):
             # zero node type for non-terminal nodes
             node['type'] = 0
 
-            threshold = self._split(x, y)
+            threshold = self._split(x, y, smooth=self._smooth_entropy)
             left_x, right_x, left_y, right_y = self._split_vector(
                 x, y, threshold)
 
