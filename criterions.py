@@ -7,5 +7,5 @@ def gini(y, **kwargs):
 
 
 def entropy(y, smooth=0, **kwargs):
-    prob = np.sum(y) / len(y)
-    return (- prob * np.log(prob + smooth))
+    prob = (np.sum(y) + smooth) / (len(y) + smooth)
+    return (- prob * np.log(prob))
