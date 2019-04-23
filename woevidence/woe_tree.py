@@ -1,11 +1,11 @@
 # Author: Kamaldinov Ildar (kamildraf@gmail.com)
 # MIT License
-from one_feature_tree import OneFeatureTree
+from woevidence.one_feature_tree import OneFeatureTree
 import numpy as np
 from joblib import Parallel, delayed
 
 
-class WoeTree(object):
+class WoeTree:
 
     def __init__(self,
                  criterion,
@@ -88,7 +88,8 @@ class WoeTree(object):
             y = np.array(y, dtype=self._dtype)
         return X, y
 
-    def _to_arglist(self, arg, shape):
+    @staticmethod
+    def _to_arglist(arg, shape):
         """make list of argument from argument of len = 1"""
         if isinstance(arg, list):
             return arg
@@ -137,6 +138,6 @@ class WoeTree(object):
                         for ind in range(X.shape[1])))
         return np.array(transformed).T
 
-    def fit_transfrom(self, X, y):
+    def fit_transform(self, X, y):
         self.fit(X, y)
         return self.transform(X)

@@ -1,7 +1,7 @@
 # Author: Kamaldinov Ildar (kamildraf@gmail.com)
 # MIT License
 import numpy as np
-from criterions import gini, entropy
+from woevidence.criterions import gini, entropy
 
 
 class OneFeatureTree(object):
@@ -70,16 +70,20 @@ class OneFeatureTree(object):
         self._na_strategy = na_strategy
         self._dtype = np.float32 if dtype is None else dtype
 
+        self._tree = dict()
+        self._woes = set()
         self._breakpoints = None
 
-    def _split_vector(self, x, y, value):
+    @staticmethod
+    def _split_vector(x, y, value):
         """split vector based on value"""
         left_ind = x < value
         left_x, right_x = x[left_ind], x[np.logical_not(left_ind)]
         left_y, right_y = y[left_ind], y[np.logical_not(left_ind)]
         return left_x, right_x, left_y, right_y
 
-    def _calc_woe(self, y, smooth_woe):
+    @staticmethod
+    def _calc_woe(y, smooth_woe):
         """woe calculation"""
         n_pos = np.sum(y)
         n_neg = np.float32(len(y)) - n_pos
@@ -107,6 +111,7 @@ class OneFeatureTree(object):
             splitter = entropy
         else:
             assert callable(self._criterion)
+            splitter = self._criterion
 
         n_obs = len(y)
 
@@ -120,8 +125,8 @@ class OneFeatureTree(object):
             n_left = mask.sum()
 
             impurities[ind] = (
-                splitter(y[np.logical_not(mask)], **kwargs) * (n_obs - n_left) +
-                splitter(y[mask], **kwargs) * n_left)
+                    splitter(y[np.logical_not(mask)], **kwargs) * (n_obs - n_left) +
+                    splitter(y[mask], **kwargs) * n_left)
         thresh_ind = np.argmin(impurities)
 
         # threshold is middle of two points
@@ -143,7 +148,7 @@ class OneFeatureTree(object):
                      if self._max_depth is not None else True)
 
         # whether exit from recursion or not
-        if (min_samples and min_class and max_depth and uniq_x):
+        if min_samples and min_class and max_depth and uniq_x:
             # zero node type for non-terminal nodes
             node['type'] = 0
 
@@ -200,8 +205,6 @@ class OneFeatureTree(object):
 
     def fit(self, x, y):
         # initialize tree and woes
-        self._tree = dict()
-        self._woes = set()
         """start recursion to calculate woe tree"""
 
         x = np.array(x, dtype=self._dtype).ravel()
