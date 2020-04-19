@@ -1,14 +1,16 @@
 # Author: Kamaldinov Ildar (kamildraf@gmail.com)
 # MIT License
 import numpy as np
+from itertools import chain
 from woevidence.criterions import gini, entropy
+from sklearn.base import TransformerMixin
 
 
-class OneFeatureTree(object):
+class OneFeatureTree(TransformerMixin):
 
     def __init__(self,
                  criterion='entropy',
-                 min_samples_leaf=2,
+                 min_samples_leaf=5,
                  smooth_woe=0.001,
                  min_samples_class=0,
                  max_depth=None,
@@ -35,7 +37,7 @@ class OneFeatureTree(object):
 
         smooth_woe : float, default=0.001
             Constant for avoiding division on zero
-            and log(0) in homoscedasticity leaf.
+            and log(0).
 
         min_samples_class : int, default=0,
             Minimum number of observation per class
@@ -43,7 +45,7 @@ class OneFeatureTree(object):
 
         max_depth : int or None, default=None
             Maximum depth of three, None means
-            unbouded tree.
+            unbounded tree.
 
         smooth_entropy : float, defalut=0.001
             Constant for avoiding log(0).
@@ -53,12 +55,12 @@ class OneFeatureTree(object):
             if float set na_strategy value to
             woe of NA, 'own' calculate woe for missing
             values or set to zero if there is no missings,
-            'min', 'max' stratigies set min and max
+            'min', 'max' strategies set min and max
             woe value respectively
 
         max_bins : int, default=255
             Number of bins for continious variable.self
-            Smaller value speep up computations.
+            Smaller value speed up computations.
         """
         self._criterion = criterion
         self._max_depth = max_depth
@@ -75,35 +77,49 @@ class OneFeatureTree(object):
         self._breakpoints = None
 
     @staticmethod
-    def _split_vector(x, y, value):
+    def _split_vector(values, threshold, *args):
         """split vector based on value"""
-        left_ind = x < value
-        left_x, right_x = x[left_ind], x[np.logical_not(left_ind)]
-        left_y, right_y = y[left_ind], y[np.logical_not(left_ind)]
-        return left_x, right_x, left_y, right_y
+        out = []
+        left_ind = values < threshold
+
+        for arg in chain([values], args):
+            out.append(arg[left_ind])
+            out.append(arg[np.logical_not(left_ind)])
+        return out
 
     @staticmethod
-    def _calc_woe(y, smooth_woe):
+    def _calc_woe(y, sample_weight, smooth_woe):
         """woe calculation"""
-        n_pos = np.sum(y)
-        n_neg = np.float32(len(y)) - n_pos
+        n_pos = np.sum(y * sample_weight)
+        n_neg = np.float32(sample_weight.sum() - n_pos)
         woe = np.log((n_pos + smooth_woe) / (n_neg + smooth_woe))
         return woe
 
     def _set_bins(self, x):
         """calculation breakpoints for splitting"""
+        candidates = self._get_bin_candidates(x)
+        uniques = np.unique(x)
+
+        if len(candidates) <= len(uniques):
+            breakpoints = candidates
+        else:
+            breakpoints = uniques
+        self._breakpoints = breakpoints
+        return self
+
+    def _get_bin_candidates(self, x):
         fd_binst = np.histogram(x, bins='fd')[1]
         scott = np.histogram(x, bins='scott')[1]
         doane = np.histogram(x, bins='doane')[1]
         bins = np.histogram(x, bins=self._max_bins)[1]
 
-        self._breakpoints = np.unique(
+        candidates = np.unique(
             np.percentile(
                 np.concatenate([fd_binst, scott, doane, bins]),
                 np.linspace(0, 100, self._max_bins + 2)))[1:-1]
-        return self
+        return candidates
 
-    def _split(self, x, y, **kwargs):
+    def _split(self, x, y, sample_weight, **kwargs):
         """threshold for splitting calculation"""
         if self._criterion == 'gini':
             splitter = gini
@@ -113,7 +129,7 @@ class OneFeatureTree(object):
             assert callable(self._criterion)
             splitter = self._criterion
 
-        n_obs = len(y)
+        total_weight = sample_weight.sum()
 
         # impurites vector
         impurities = np.zeros(len(self._breakpoints))
@@ -122,18 +138,20 @@ class OneFeatureTree(object):
         mask = np.ones_like(x, dtype=bool)
         for ind, brkpoint in enumerate(self._breakpoints):
             mask[mask] = (x[mask] > brkpoint)
-            n_left = mask.sum()
+            left_weight = sample_weight[mask].sum()
 
             impurities[ind] = (
-                    splitter(y[np.logical_not(mask)], **kwargs) * (n_obs - n_left) +
-                    splitter(y[mask], **kwargs) * n_left)
+                    splitter(y[np.logical_not(mask)],
+                             sample_weight[np.logical_not(mask)],
+                             **kwargs) * (total_weight - left_weight) +
+                    splitter(y[mask], sample_weight[mask], **kwargs) * left_weight)
         thresh_ind = np.argmin(impurities)
 
         # threshold is middle of two points
         threshold = self._breakpoints[thresh_ind]
         return threshold
 
-    def _fit_node(self, x, y, depth, node):
+    def _fit_node(self, x, y, sample_weight, depth, node):
         """set node to terminal or non-terminal"""
         if self._breakpoints is None:
             self._set_bins(x)
@@ -152,41 +170,43 @@ class OneFeatureTree(object):
             # zero node type for non-terminal nodes
             node['type'] = 0
 
-            threshold = self._split(x, y, smooth=self._smooth_entropy)
-            left_x, right_x, left_y, right_y = self._split_vector(
-                x, y, threshold)
+            threshold = self._split(x, y, sample_weight, smooth=self._smooth_entropy)
+            left_x, right_x, left_y, right_y, left_sw, right_sw = self._split_vector(
+                x, threshold, y, sample_weight)
 
             # 0 -- left_child, 1 -- right child
             node[0] = {}
             node[1] = {}
             node['thresh'] = threshold
-            self._fit_node(left_x, left_y,
+            self._fit_node(left_x, left_y, left_sw,
                            depth + 1,
                            node[0])
-            self._fit_node(right_x, right_y,
+            self._fit_node(right_x, right_y, right_sw,
                            depth + 1,
                            node[1])
         else:
             # setting node value
             node['type'] = 1
-            node['woe'] = self._calc_woe(y, self._smooth_woe)
+            node['woe'] = self._calc_woe(y, sample_weight, self._smooth_woe)
             self._woes.update([node['woe']])
         return self
 
-    def _filter_na(self, x, y):
+    def _filter_na(self, x, y, sample_weight):
         """filted dataset from NA"""
         self._na_woe = None
         na_inds = np.argwhere(np.isnan(x))
-        return np.delete(x, na_inds), np.delete(y, na_inds)
+        return (np.delete(x, na_inds),
+                np.delete(y, na_inds),
+                np.delete(sample_weight, na_inds))
 
-    def _handle_na(self, x, y):
+    def _handle_na(self, x, y, sample_weight):
         """set woe value for NA"""
         na_inds = np.argwhere(np.isnan(x))
 
         if self._na_strategy == 'own':
             # calc woe for NA if there are NAs
             if len(na_inds) != 0:
-                self._na_woe = self._calc_woe(y[na_inds],
+                self._na_woe = self._calc_woe(y[na_inds], sample_weight[na_inds],
                                               self._smooth_woe)
                 self._woes.update([self._na_woe])
             # set woe for NA to zero if there is no NA
@@ -203,17 +223,20 @@ class OneFeatureTree(object):
 
         return None
 
-    def fit(self, x, y):
+    def fit(self, x, y, sample_weight):
         # initialize tree and woes
         """start recursion to calculate woe tree"""
 
         x = np.array(x, dtype=self._dtype).ravel()
         y = np.array(y, dtype=self._dtype).ravel()
-        fltr_x, fltr_y = self._filter_na(x, y)
+        sample_weight = np.array(sample_weight, dtype=self._dtype).ravel()
+        
+        fltr_x, fltr_y, fltr_sw = self._filter_na(x=x, y=y,
+                                                  sample_weight=sample_weight)
 
-        self._fit_node(fltr_x, fltr_y,
+        self._fit_node(fltr_x, fltr_y, fltr_sw,
                        depth=0, node=self._tree)
-        self._handle_na(x, y)
+        self._handle_na(x, y, sample_weight)
         return self
 
     def _transform_node(self, x, node):
@@ -236,6 +259,6 @@ class OneFeatureTree(object):
             transformed[ind] = self._transform_node(x[ind], self._tree)
         return transformed
 
-    def fit_transform(self, x, y):
-        self.fit(x, y)
+    def fit_transform(self, x, y, sample_weight):
+        self.fit(x, y, sample_weight)
         return self.transform(x)

@@ -1,4 +1,4 @@
-certifi==2019.3.9
-joblib==0.13.2
-numpy==1.16.3
--e git+https://github.com/kamildar/woe_transform.git@2b53357013718f9f43108bfb169cad295ea5706a#egg=woevidence
+scikit-learn==0.22.2.post1
+joblib==0.14.1
+numpy==1.18.2
+pandas==0.24.2
