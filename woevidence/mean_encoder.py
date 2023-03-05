@@ -26,7 +26,7 @@ class MeanEncoder(object):
 
     def fit_transform(self, x, y, sample_weight=None):
         self.fit(x, y, sample_weight)
-        return self.transform(y)
+        return self.transform(x)
 
     def _save_total_mean(self, y, sample_weight):
         self._total_mean = np.average(y, weights=sample_weight)
